@@ -1,0 +1,6 @@
+[Addon]
+Name=Vimmy
+Category=InputMethod
+Version=0.1
+Library=vimmy
+Type=SharedLibrary

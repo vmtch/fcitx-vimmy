@@ -1,0 +1,6 @@
+[InputMethod]
+Name=Vimmy
+Icon=keyboard
+Label=V
+LangCode=ja
+Addon=vimmy
