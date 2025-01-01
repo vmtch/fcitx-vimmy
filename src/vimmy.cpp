@@ -8,7 +8,9 @@ void VimmyEngine::keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyEvent
         return;
     }
     switch (currentMode) {
-        case NORMAL:
+    case NORMAL:
+        switch (currentSubMode) {
+        case SUBNORMAL:
             // number
             {
                 int digit = getDigit(key);
@@ -48,68 +50,103 @@ void VimmyEngine::keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyEvent
             } else if (key.check(fcitx::Key("l"))) {
                 cursorPosition = std::min(int(preeditText.size()), int(cursorPosition + multiplier));
                 multiplier = 0;
+            } else if (key.check(fcitx::Key("f"))) {
+                singleChar = 'f';
+                currentSubMode = SINGLECHAR;
+            } else if (key.check(fcitx::Key("t"))) {
+                singleChar = 't';
+                currentSubMode = SINGLECHAR;
             }
             updatePreedit(inputContext);
             keyEvent.filterAndAccept();
             break;
-        case INSERT:
-            if (key.check(fcitx::Key("Escape")) ||
-                key.check(fcitx::Key("Control+bracketleft"))) {
-                if (multiplier > 1) {
-                    std::string repeatedText;
-                    for (int i = 1; i < multiplier; ++i) {
-                        repeatedText += tmpText;
+        case SINGLECHAR:
+            if (key.isSimple()) {
+                switch (singleChar) {
+                int p;
+                case 'f':
+                    p = findNthOccurrence(preeditText, 'a', multiplier);
+                    if (p > 0) {
+                        cursorPosition = p;
                     }
-                    preeditText.insert(cursorPosition, repeatedText);
-                    cursorPosition += repeatedText.size();
-                    updatePreedit(inputContext);
-                }
-                FCITX_INFO() << "Switched to Normal mode";
-                currentMode = NORMAL;
-                multiplier = 0;
-                tmpText = "";
-                keyEvent.filterAndAccept();
-            } else if (key.check(fcitx::Key("BackSpace"))) {
-                if (!preeditText.empty() && cursorPosition > 0) {
-                        preeditText.erase(cursorPosition - 1, 1);
-                        tmpText += '\b';
-                        --cursorPosition;
-                        updatePreedit(inputContext);
-                } else {
-                    //PASSTHROUGH BACKSPACE
-                    FCITX_INFO() << "BAKCSPACE PASSTHROUGH";
-                    inputContext->forwardKey(key);
+                    multiplier = 0;
+                    break;
+                case 't':
+                    p = findNthOccurrence(preeditText, 'a', multiplier) - 1;
+                    if (p > 0) {
+                        cursorPosition = p;
+                    }
+                    multiplier = 0;
                     break;
                 }
-                keyEvent.filterAndAccept();
-            } else if (key.check(fcitx::Key("Delete"))) {
-                if (!preeditText.empty()) {
-                    if (cursorPosition < preeditText.size()) {
-                        preeditText.erase(cursorPosition, 1);
-                        updatePreedit(inputContext);
-                    }
+            }
+            currentSubMode = SUBNORMAL;
+            updatePreedit(inputContext);
+            keyEvent.filterAndAccept();
+            break;
+        }
+        break;
+    case INSERT:
+        if (key.check(fcitx::Key("Escape")) ||
+            key.check(fcitx::Key("Control+bracketleft"))) {
+            if (multiplier > 1) {
+                std::string repeatedText;
+                for (int i = 1; i < multiplier; ++i) {
+                    repeatedText += tmpText;
                 }
-                keyEvent.filterAndAccept();
-            } else if (key.check(fcitx::Key("Return"))) {
-                if (!preeditText.empty()) {
-                    std::string left = preeditText.substr(0, cursorPosition);
-                    std::string right = preeditText.substr(cursorPosition);
-                    inputContext->commitString(left);
-                    preeditText = right;
-                    cursorPosition = 0;
+                preeditText.insert(cursorPosition, repeatedText);
+                cursorPosition += repeatedText.size();
+                updatePreedit(inputContext);
+            }
+            FCITX_INFO() << "Switched to Normal mode";
+            currentMode = NORMAL;
+            multiplier = 0;
+            tmpText = "";
+            keyEvent.filterAndAccept();
+        } else if (key.check(fcitx::Key("BackSpace"))) {
+            if (!preeditText.empty() && cursorPosition > 0) {
+                    preeditText.erase(cursorPosition - 1, 1);
+                    tmpText += '\b';
+                    --cursorPosition;
+                    updatePreedit(inputContext);
+            } else {
+                //PASSTHROUGH BACKSPACE
+                FCITX_INFO() << "BAKCSPACE PASSTHROUGH";
+                inputContext->forwardKey(key);
+                break;
+            }
+            keyEvent.filterAndAccept();
+        } else if (key.check(fcitx::Key("Delete"))) {
+            if (!preeditText.empty()) {
+                if (cursorPosition < preeditText.size()) {
+                    preeditText.erase(cursorPosition, 1);
                     updatePreedit(inputContext);
                 }
-            } else if (key.isSimple()) {
-                char inputChar = key.sym();
-                preeditText.insert(cursorPosition, 1, inputChar);
-                tmpText += inputChar;
-                ++cursorPosition;
-                updatePreedit(inputContext);
-                keyEvent.filterAndAccept();
             }
-            break;
+            keyEvent.filterAndAccept();
+        } else if (key.check(fcitx::Key("Return"))) {
+            if (!preeditText.empty()) {
+                std::string left = preeditText.substr(0, cursorPosition);
+                std::string right = preeditText.substr(cursorPosition);
+                inputContext->commitString(left);
+                preeditText = right;
+                cursorPosition = 0;
+                updatePreedit(inputContext);
+            }
+        } else if (key.isSimple()) {
+            char inputChar = key.sym();
+            preeditText.insert(cursorPosition, 1, inputChar);
+            tmpText += inputChar;
+            ++cursorPosition;
+            updatePreedit(inputContext);
+            keyEvent.filterAndAccept();
+        }
+        break;
     }
-    FCITX_INFO() << "Mode:" << currentMode << " Multiplier:" << multiplier << " keycoode:" << key;
+    FCITX_INFO() << "Mode:" << currentMode
+        << " SubMode:" << currentSubMode
+        << " Multiplier:" << multiplier
+        << " keycoode:" << key;
 }
 
 void VimmyEngine::updatePreedit(fcitx::InputContext *inputContext) {

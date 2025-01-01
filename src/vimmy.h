@@ -8,9 +8,15 @@
 #include <fcitx-utils/log.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx-utils/key.h>
+
+#include "normal.h"
+
 #define NORMAL 0
 #define INSERT 1
-#define VIDUAL 2
+#define VISUAL 2
+
+#define SUBNORMAL   100
+#define SINGLECHAR  101
 
 int getDigit(const fcitx::Key &key)
 {
@@ -26,11 +32,13 @@ public:
     void keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyEvent &keyEvent) override;
 
 private:
-    int currentMode = 0;
+    int currentMode = NORMAL;
+    int currentSubMode = SUBNORMAL;
     int multiplier = 0;
     size_t cursorPosition = 0;
     std::string tmpText;
     std::string preeditText;
+    char singleChar;
     void updatePreedit(fcitx::InputContext *inputContext);
 };
 
