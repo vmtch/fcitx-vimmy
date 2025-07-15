@@ -2,12 +2,18 @@
 
 #include <algorithm>
 #include <string>
+#include <fstream>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 #include <fcitx/inputmethodengine.h>
 #include <fcitx/addonfactory.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx-utils/log.h>
 #include <fcitx/inputpanel.h>
+#include <fcitx/addonmanager.h>
 #include <fcitx-utils/key.h>
+#include <fcitx-utils/event.h>
 
 #include "normal.h"
 
@@ -30,6 +36,7 @@ int getDigit(const fcitx::Key &key)
 class VimmyEngine : public fcitx::InputMethodEngineV2 {
 public:
     void keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyEvent &keyEvent) override;
+    void startExternalEditor(fcitx::InputContext* ic);
 
 private:
     int currentMode = NORMAL;
@@ -39,6 +46,19 @@ private:
     std::string tmpText;
     std::string preeditText;
     char singleChar;
+    /* * The pid of the external editor process.
+     * If it is -1, then no external editor is running.
+     */
+    pid_t externalPid = -1;
+    /* * The file that the external editor is editing.
+     * If it is empty, then no external editor is running.
+     */
+    std::string externalTmpFile;
+    fcitx::InputContext *externalIC = nullptr;
+    fcitx::EventSource *externalTimer = nullptr;
+
+    void checkExternalEditor();
+    void commitString(fcitx::InputContext *ic, const std::string &str);
     void updatePreedit(fcitx::InputContext *inputContext);
 };
 

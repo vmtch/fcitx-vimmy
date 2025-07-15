@@ -1,6 +1,7 @@
 #include "vimmy.h"
 
 void VimmyEngine::keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyEvent &keyEvent) {
+    checkExternalEditor();
     if (keyEvent.isRelease()) return;
     auto key = keyEvent.key();
     auto inputContext = keyEvent.inputContext();
@@ -30,6 +31,7 @@ void VimmyEngine::keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyEvent
             } else if (key.check(fcitx::Key("i"))) {
                 FCITX_INFO() << "Switched to Insert mode(i)";
                 currentMode = INSERT;
+                startExternalEditor(inputContext);
             } else if (key.check(fcitx::Key("a"))) {
                 FCITX_INFO() << "Switched to Insert mode(a)";
                 if (cursorPosition < preeditText.size()) {
@@ -147,6 +149,104 @@ void VimmyEngine::keyEvent(const fcitx::InputMethodEntry &entry, fcitx::KeyEvent
         << " SubMode:" << currentSubMode
         << " Multiplier:" << multiplier
         << " keycoode:" << key;
+}
+
+void VimmyEngine::startExternalEditor(fcitx::InputContext *ic) {
+    // This is a placeholder for starting an external editor.
+    // In a real implementation, you would launch the editor here.
+    if (externalPid > 0) {
+        int status = 0;
+        pid_t r = waitpid(externalPid, &status, WNOHANG);
+        if (r == 0) {
+            FCITX_INFO() << "External editor is still running.";
+            return;
+        }
+        FCITX_INFO() << "External editor exited with status:" << status;
+        externalPid = -1;
+        if (!externalTmpFile.empty()) {
+            unlink(externalTmpFile.c_str());
+            externalTmpFile.clear();
+        }
+    }
+    char tmpFile[] = "/tmp/vimmyXXXXXX";
+    int fd = mkstemp(tmpFile);
+    if (fd < 0) {
+        FCITX_ERROR() << "Failed to create temporary file for external editor.";
+        return;
+    }
+    close(fd);
+    externalTmpFile = tmpFile;
+
+    externalIC = ic;
+    pid_t pid = fork();
+    const char *term = getenv("TERM");
+    if (!term || !*term) {
+        term = "alacritty";
+    }
+    if (pid == 0) {
+        setsid();
+        execlp(
+            term,
+            term,
+            "-e", "vim",
+            externalTmpFile.c_str(),
+            (char *)nullptr
+        );
+        _exit(127);
+    } else if (pid > 0) {
+        externalPid = pid;
+        FCITX_INFO() << "External editor started with PID:" << externalPid;
+    } else {
+        FCITX_ERROR() << "Failed to fork for external editor.";
+        unlink(externalTmpFile.c_str());
+        externalTmpFile.clear();
+        return;
+    }
+}
+
+void VimmyEngine::checkExternalEditor() {
+    if (externalPid <= 0) {
+        return;
+    }
+    int status = 0;
+    pid_t r = waitpid(externalPid, &status, WNOHANG);
+    if (r == 0) {
+        FCITX_INFO() << "External editor is still running.";
+        return;
+    }
+    FCITX_INFO() << "External editor exited with status:" << status;
+    externalPid = -1;
+
+
+    std::string text;
+    if (!externalTmpFile.empty()) {
+        std::ifstream ifs(externalTmpFile);
+        text.assign((std::istreambuf_iterator<char>(ifs)),
+                        std::istreambuf_iterator<char>());
+        unlink(externalTmpFile.c_str());
+        externalTmpFile.clear();
+    }
+
+    commitString(externalIC, text);
+
+    externalPid = -1;
+}
+
+void VimmyEngine::commitString(fcitx::InputContext *ic, const std::string &text) {
+    if (ic) {
+        if (!text.empty()) {
+            ic->commitString(text);
+        }
+        ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
+    }
+    currentMode = NORMAL;
+    currentSubMode = SUBNORMAL;
+    multiplier = 0;
+    preeditText.clear();
+    cursorPosition = 0;
+    if (externalIC) {
+        updatePreedit(externalIC);
+    }
 }
 
 void VimmyEngine::updatePreedit(fcitx::InputContext *inputContext) {
